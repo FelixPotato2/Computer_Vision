@@ -1,6 +1,12 @@
 import numpy as np
 import cv2 as cv
 import glob
+import os
+import shutil
+
+#folders
+bad_dir = "bad_images"
+good_dir = "good_images"
 
 # termination criteria
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -14,6 +20,12 @@ objpoints = [] # 3d point in real world space
 imgpoints = [] # 2d points in image plane.
 
 images = glob.glob('./images/*.jpg')
+
+#clean up output directories
+shutil.rmtree(good_dir, ignore_errors=True)
+os.makedirs(good_dir)
+shutil.rmtree(bad_dir, ignore_errors=True)
+os.makedirs(bad_dir)
 
 for fname in images:
     img = cv.imread(fname)
@@ -33,4 +45,13 @@ for fname in images:
         cv.drawChessboardCorners(img, (9,6), corners2, ret)
         cv.imshow('img', img)
         cv.waitKey(500)
+
+        print("Chessboard corners found in image: ", fname)
+        out_path = os.path.join(good_dir, os.path.basename(fname))
+        cv.imwrite(out_path, img)
+
+    else :
+        print("Chessboard corners not found in image: ", fname)
+        out_path = os.path.join(bad_dir, os.path.basename(fname))
+        cv.imwrite(out_path, img)
 
