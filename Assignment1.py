@@ -4,6 +4,20 @@ import glob
 import os
 import shutil
 
+def click_event(event, x, y, flags, params):
+    if event == cv.EVENT_LBUTTONDOWN:
+        print(x, y)
+        font = cv.FONT_HERSHEY_SIMPLEX
+        cv.putText(img, f"{x},{y}", (x, y), font, 1, (255, 0, 0), 2)
+        cv.imshow('image', img)
+
+    if event == cv.EVENT_RBUTTONDOWN:
+        print(x, y)
+        font = cv.FONT_HERSHEY_SIMPLEX
+        b, g, r = img[y, x]
+        cv.putText(img, f"{b},{g},{r}", (x, y), font, 1, (255, 255, 0), 2)
+        cv.imshow('image', img)
+
 #folders
 bad_dir = "bad_images"
 good_dir = "good_images"
@@ -55,3 +69,14 @@ for fname in images:
         out_path = os.path.join(bad_dir, os.path.basename(fname))
         cv.imwrite(out_path, img)
 
+    cv.destroyAllWindows()
+
+manual_images = glob.glob('./bad_images/*.jpg')
+
+for fname in manual_images:
+    img = cv.imread(fname)
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    cv.imshow('image', img)
+    cv.setMouseCallback('image', click_event)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
