@@ -22,21 +22,21 @@ def select_corners(event, x, y, flags, param):
     font = cv.FONT_HERSHEY_SIMPLEX
 
     if event == cv.EVENT_LBUTTONDOWN:
-        if len(param['points']) < 4:
-            param['points'].append((x,y))
+        if len(param['2dpoints']) < 4:
+            param['2dpoints'].append((x,y))
             cv.circle(param['base'], (x,y), 5, (255,0,0), -1)
     
     elif event == cv.EVENT_RBUTTONDOWN:
-        param['points'].clear()
+        param['2dpoints'].clear()
         param['base'] = param['original'].copy()
 
     param['display'] = param['base'].copy()
 
-    n = len(param['points'])
+    n = len(param['2dpoints'])
     if n < 4:
         msg = f"Click {corners[n]} corner"    
     else:
-        msg = f"Done, press Enter to continue"
+        msg = f"Done! Press Enter to continue"
     
     cv.putText(param['display'], msg, (100,260), font, 1, (0, 0, 255), 2)
     cv.imshow('Image', param['display'])
@@ -99,11 +99,12 @@ manual_images = glob.glob('./bad_images/*.jpg')
 shutil.rmtree("new_images", ignore_errors=True)
 os.makedirs("new_images")
 
-# Arrays to store object points and image points from all the images.
+# Arrays to store (3d) object points and (2d) image points from all the images (automatically and manually tracked)
 board_object_points = create_object_points(9, 6, EDGE_SIZE)
-objectPoints = []   # 3d point in real world space
-imagePoints = []    # 2d points in image plane.
-
+auto_objectPoints = []
+auto_imagePoints = []
+manual_objectPoints = []
+manual_imagePoints = []
 
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 objp = np.zeros((6*9,3), np.float32)
@@ -119,9 +120,9 @@ for fname in images:
 
     # If found, add object points, image points (after refining them)
     if ret == True:
-        objectPoints.append(objp)
+        auto_objectPoints.append(objp)
         corners2 = cv.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
-        imagePoints.append(corners2)
+        auto_imagePoints.append(corners2)
 
         # Draw and display the corners
         cv.drawChessboardCorners(img, (9,6), corners2, ret)
@@ -163,8 +164,8 @@ for fname in manual_images:
 
     #distinction between 2D and 3D points
     img_points = img_grid.reshape(-1, 2)
-    imagePoints.append(img_points)
-    objectPoints.append(board_object_points.copy())
+    manual_imagePoints.append(img_points)
+    manual_objectPoints.append(board_object_points.copy())
 
         
     for pt in img_grid:
@@ -176,24 +177,14 @@ for fname in manual_images:
 
     cv.waitKey(0)
     cv.destroyAllWindows()
-    print(state['2dpoints'])
+    #print(state['2dpoints'])
 
 
 
-"""""
-    Part 4: Camera calibration
+"""
+    Part 4: Three runs of calibration.
 
-    We must use ->   cv::calibrateCamera (InputArrayOfArrays objectPoints, InputArrayOfArrays imagePoints,
-    Size imageSize, InputOutputArray cameraMatrix, InputOutputArray distCoeffs, OutputArrayOfArrays rvecs, 
-    OutputArrayOfArrays tvecs, int flags=0, TermCriteria criteria=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, DBL_EPSILON))
-
-"""""
-
-# image size 
-image_size = (cv.imread(images[0]).shape[1], cv.imread(images[0]).shape[0])  # (width, height)
-
-# calibrate the camera
-ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(
+    We need to use cv.calibrateCamera(
     objectPoints,    # list of 3D points per image
     imagePoints,     # list of 2D points per image
     image_size,      # image width and height
@@ -203,18 +194,33 @@ ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(
     criteria=criteria
 )
 
-# print results
-#print("Reprojection error:", ret)
-print("Camera matrix K:\n", cameraMatrix)
-#print("Distortion coefficients:\n", distCoeffs)
-
+    Run 1: use all 25 training images (including the 5 images with manually provided corner points).
+    Run 2: use only five images for which corner points were found automatically, and the five with manually provided corner points (10 images in total).
+    Run 3: use only the five images for which corner points were found automatically from Run 2, but without the additional five (5 images in total).
+    In each run, you will calibrate the camera. After calibration, you will need the camera intrinsics (or cameraMatrix) and the camera extrinsics (for Assignment 2).
 
 """
-Next:
-You will do three runs of calibration.
 
-Run 1: use all 25 training images (including the 5 images with manually provided corner points).
-Run 2: use only five images for which corner points were found automatically, and the five with manually provided corner points (10 images in total).
-Run 3: use only the five images for which corner points were found automatically from Run 2, but without the additional five (5 images in total).
-In each run, you will calibrate the camera. After calibration, you will need the camera intrinsics (or cameraMatrix) and the camera extrinsics (for Assignment 2).
-"""
+# image size 
+image_size = (cv.imread(images[0]).shape[1], cv.imread(images[0]).shape[0])  # (width, height)
+
+#----------------------- Run 1 (all images) ----------------------------#
+objectPoints_run1 = auto_objectPoints + manual_objectPoints
+imagePoints_run1  = auto_imagePoints  + manual_imagePoints
+
+ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run1, imagePoints_run1, image_size, None, None, flags=0, criteria=criteria)
+print("Camera matrix for Run 1, K1:\n", cameraMatrix)
+
+#-------------------- Run 2 (5 automatic + 5 manual) ---------------------#
+objectPoints_run2 = auto_objectPoints[:5] + manual_objectPoints
+imagePoints_run2  = auto_imagePoints[:5]  + manual_imagePoints
+
+ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run2, imagePoints_run2, image_size, None, None, flags=0, criteria=criteria)
+print("Camera matrix for Run 2, K2:\n", cameraMatrix)
+
+#--------------------- Run 3 (5 automatic only) --------------------------#
+objectPoints_run3 = auto_objectPoints[:5]
+imagePoints_run3  = auto_imagePoints[:5]
+
+ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run3, imagePoints_run3, image_size, None, None, flags=0, criteria=criteria)
+print("Camera matrix for Run 3, K3:\n", cameraMatrix)
