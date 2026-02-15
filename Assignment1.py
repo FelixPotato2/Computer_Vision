@@ -96,6 +96,7 @@ def create_object_points(cols, rows, square_size_mm):
 # directories for the training images
 images = glob.glob('./images/*.jpg')
 manual_images = glob.glob('./bad_images/*.jpg')
+test_images = glob.glob('./test_images/*.jpg')
 shutil.rmtree("new_images", ignore_errors=True)
 os.makedirs("new_images")
 
@@ -122,6 +123,12 @@ for fname in images:
     if ret == True:
         auto_objectPoints.append(objp)
         corners2 = cv.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
+
+        # Reorder the corners to ensure top-left is origin
+        corners2 = corners2.reshape(pattern_size[1], pattern_size[0], 2)
+        corners2 = np.flipud(np.fliplr(corners2))
+        corners2 = corners2.reshape(-1,2)
+
         auto_imagePoints.append(corners2)
 
         # Draw and display the corners
@@ -159,8 +166,13 @@ for fname in manual_images:
         print("Skipped image: ", fname)
         continue
 
-    #interpolation to find other corners
+    # interpolation to find other corners
     img_grid = interpolate_corners(state['2dpoints'], 9, 6)
+
+    # reorder the corners to ensure top-left is origin
+    img_grid = img_grid.reshape(pattern_size[1], pattern_size[0], 2)    
+    img_grid = np.flipud(np.fliplr(img_grid))                           
+    img_points = img_grid.reshape(-1, 2)                                
 
     #distinction between 2D and 3D points
     img_points = img_grid.reshape(-1, 2)
@@ -203,27 +215,20 @@ image_size = (cv.imread(images[0]).shape[1], cv.imread(images[0]).shape[0])  # (
 objectPoints_run1 = auto_objectPoints + manual_objectPoints
 imagePoints_run1  = auto_imagePoints  + manual_imagePoints
 
-ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run1, imagePoints_run1, image_size, None, None, flags=0, criteria=criteria)
+ret, cameraMatrix1, distCoeffs1, rvecs1, tvecs1 = cv.calibrateCamera(objectPoints_run1, imagePoints_run1, image_size, None, None, flags=0, criteria=criteria)
 print("############ RESULTS OF RUN 1 ############\n")
-print("Intrinsic Parameters : Camera matrix K:\n", cameraMatrix)
-print("Extrinsic parameters : [R|t] for each image:")
-for i, (rvec, tvec) in enumerate(zip(rvecs, tvecs)):
-    R, _ = cv.Rodrigues(rvec)
-    extrinsic = np.hstack((R, tvec.reshape(3,1)))
-
-    print(f"\nImage {i} extrinsic [R|t]:")
-    print(extrinsic)
+print("Intrinsic Parameters : Camera matrix K:\n", cameraMatrix1)
 print("##########################################\n")
 
 #-------------------- Run 2 (5 automatic + 5 manual) ---------------------#
-objectPoints_run2 = auto_objectPoints[:5] + manual_objectPoints
-imagePoints_run2  = auto_imagePoints[:5]  + manual_imagePoints
-
-ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run2, imagePoints_run2, image_size, None, None, flags=0, criteria=criteria)
+objectPoints_run2 = auto_objectPoints[:5] + manual_objectPoints[:5]
+imagePoints_run2  = auto_imagePoints[:5]  + manual_imagePoints[:5]
+    
+ret, cameraMatrix2, distCoeffs2, rvecs2, tvecs2 = cv.calibrateCamera(objectPoints_run2, imagePoints_run2, image_size, None, None, flags=0, criteria=criteria)
 print("############ RESULTS OF RUN 2 ############\n")
-print("Intrinsic Parameters : Camera matrix K:\n", cameraMatrix)
+print("Intrinsic Parameters : Camera matrix K:\n", cameraMatrix2)
 print("Extrinsic Parameters : [R|t] for each image:")
-for i, (rvec, tvec) in enumerate(zip(rvecs, tvecs)):
+for i, (rvec, tvec) in enumerate(zip(rvecs2, tvecs2)):
     R, _ = cv.Rodrigues(rvec)
     extrinsic = np.hstack((R, tvec.reshape(3,1)))
 
@@ -235,14 +240,91 @@ print("##########################################\n")
 objectPoints_run3 = auto_objectPoints[:5]
 imagePoints_run3  = auto_imagePoints[:5]
 
-ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run3, imagePoints_run3, image_size, None, None, flags=0, criteria=criteria)
+ret, cameraMatrix3, distCoeffs3, rvecs3, tvecs3 = cv.calibrateCamera(objectPoints_run3, imagePoints_run3, image_size, None, None, flags=0, criteria=criteria)
 print("############ RESULTS OF RUN 3 ############\n")
-print("Instrinic Parameters : Camera matrix K:\n", cameraMatrix)
+print("Instrinic Parameters : Camera matrix K:\n", cameraMatrix3)
 print("Extrinsic parameters : [R|t] for each image:")
-for i, (rvec, tvec) in enumerate(zip(rvecs, tvecs)):
+for i, (rvec, tvec) in enumerate(zip(rvecs3, tvecs3)):
     R, _ = cv.Rodrigues(rvec)
     extrinsic = np.hstack((R, tvec.reshape(3,1)))
 
     print(f"\nImage {i} extrinsic [R|t]:")
     print(extrinsic)
 print("##########################################\n")
+
+
+
+"""
+    Part 5: Project from 3d object to 2d pixel coordinates
+
+    We must use -> cv.projectPoints(
+    object_points_3D,
+    rvec,
+    tvec,
+    K,
+    distCoeffs
+    )
+
+"""
+
+L = 75  # length of axes in mm
+axis = np.float32([
+    [0, 0, 0],   # origin
+    [L, 0, 0],   # X
+    [0, L, 0],   # Y
+    [0, 0, -L]   # Z
+])
+# Single test image
+img_path = test_images[0]
+img = cv.imread(img_path)
+
+def draw_axes(objectPoints_run, imagePoints_run, img, axis, image_size, criteria, flags=0):
+    """
+    Calibrates the camera for the given points and draws the 3D axes on the image.
+    
+    objectPoints_run: 3d points from the calibration run
+    imagePoints_run: 2d points from the calibration run
+    img: the test image
+    
+    """
+    # Calibrate
+    ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(
+        objectPoints_run, imagePoints_run, image_size, None, None, flags=flags, criteria=criteria
+    )
+    
+    # Same test image for all runs
+    rvec = rvecs[3]
+    tvec = tvecs[3]
+    
+    # Project 3D axes to 2D image
+    imgpts, _ = cv.projectPoints(axis, rvec, tvec, cameraMatrix, distCoeffs)
+    pts = imgpts.reshape(-1,2).astype(int)
+    
+    origin_pt = tuple(pts[0])
+    
+    # Draw axes
+    cv.line(img, origin_pt, tuple(pts[1]), (0,0,255), 5)  # X-axis red
+    cv.line(img, origin_pt, tuple(pts[2]), (0,255,0), 5)  # Y-axis green
+    cv.line(img, origin_pt, tuple(pts[3]), (255,0,0), 5)  # Z-axis blue
+    
+    # Display
+    cv.imshow("Axes overlay", img)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    
+    return cameraMatrix, distCoeffs, rvecs, tvecs
+
+# Run 1
+cameraMatrix1, distCoeffs1, rvecs1, tvecs1 = draw_axes(
+    objectPoints_run1, imagePoints_run1, img.copy(), axis, image_size, criteria
+)
+
+# Run 2
+cameraMatrix2, distCoeffs2, rvecs2, tvecs2 = draw_axes(
+    objectPoints_run2, imagePoints_run2, img.copy(), axis, image_size, criteria
+)
+
+# Run 3
+cameraMatrix3, distCoeffs3, rvecs3, tvecs3 = draw_axes(
+    objectPoints_run3, imagePoints_run3, img.copy(), axis, image_size, criteria
+)
