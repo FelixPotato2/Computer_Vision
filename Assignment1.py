@@ -194,11 +194,6 @@ for fname in manual_images:
     criteria=criteria
 )
 
-    Run 1: use all 25 training images (including the 5 images with manually provided corner points).
-    Run 2: use only five images for which corner points were found automatically, and the five with manually provided corner points (10 images in total).
-    Run 3: use only the five images for which corner points were found automatically from Run 2, but without the additional five (5 images in total).
-    In each run, you will calibrate the camera. After calibration, you will need the camera intrinsics (or cameraMatrix) and the camera extrinsics (for Assignment 2).
-
 """
 
 # image size 
@@ -209,18 +204,45 @@ objectPoints_run1 = auto_objectPoints + manual_objectPoints
 imagePoints_run1  = auto_imagePoints  + manual_imagePoints
 
 ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run1, imagePoints_run1, image_size, None, None, flags=0, criteria=criteria)
-print("Camera matrix for Run 1, K1:\n", cameraMatrix)
+print("############ RESULTS OF RUN 1 ############\n")
+print("Intrinsic Parameters : Camera matrix K:\n", cameraMatrix)
+print("Extrinsic parameters : [R|t] for each image:")
+for i, (rvec, tvec) in enumerate(zip(rvecs, tvecs)):
+    R, _ = cv.Rodrigues(rvec)
+    extrinsic = np.hstack((R, tvec.reshape(3,1)))
+
+    print(f"\nImage {i} extrinsic [R|t]:")
+    print(extrinsic)
+print("##########################################\n")
 
 #-------------------- Run 2 (5 automatic + 5 manual) ---------------------#
 objectPoints_run2 = auto_objectPoints[:5] + manual_objectPoints
 imagePoints_run2  = auto_imagePoints[:5]  + manual_imagePoints
 
 ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run2, imagePoints_run2, image_size, None, None, flags=0, criteria=criteria)
-print("Camera matrix for Run 2, K2:\n", cameraMatrix)
+print("############ RESULTS OF RUN 2 ############\n")
+print("Intrinsic Parameters : Camera matrix K:\n", cameraMatrix)
+print("Extrinsic Parameters : [R|t] for each image:")
+for i, (rvec, tvec) in enumerate(zip(rvecs, tvecs)):
+    R, _ = cv.Rodrigues(rvec)
+    extrinsic = np.hstack((R, tvec.reshape(3,1)))
+
+    print(f"\nImage {i} extrinsic [R|t]:")
+    print(extrinsic)
+print("##########################################\n")
 
 #--------------------- Run 3 (5 automatic only) --------------------------#
 objectPoints_run3 = auto_objectPoints[:5]
 imagePoints_run3  = auto_imagePoints[:5]
 
 ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(objectPoints_run3, imagePoints_run3, image_size, None, None, flags=0, criteria=criteria)
-print("Camera matrix for Run 3, K3:\n", cameraMatrix)
+print("############ RESULTS OF RUN 3 ############\n")
+print("Instrinic Parameters : Camera matrix K:\n", cameraMatrix)
+print("Extrinsic parameters : [R|t] for each image:")
+for i, (rvec, tvec) in enumerate(zip(rvecs, tvecs)):
+    R, _ = cv.Rodrigues(rvec)
+    extrinsic = np.hstack((R, tvec.reshape(3,1)))
+
+    print(f"\nImage {i} extrinsic [R|t]:")
+    print(extrinsic)
+print("##########################################\n")
