@@ -274,57 +274,80 @@ axis = np.float32([
     [0, L, 0],   # Y
     [0, 0, -L]   # Z
 ])
+cube = np.float32([
+    [0,0,0],       # bottom-front-left
+    [L,0,0],       # bottom-front-right
+    [L,L,0],       # bottom-back-right
+    [0,L,0],       # bottom-back-left
+    [0,0,-L],      # top-front-left
+    [L,0,-L],      # top-front-right
+    [L,L,-L],      # top-back-right
+    [0,L,-L]       # top-back-left
+])
 # Single test image
 img_path = test_images[0]
 img = cv.imread(img_path)
 
-def draw_axes(objectPoints_run, imagePoints_run, img, axis, image_size, criteria, flags=0):
+def draw_cube(objectPoints_run, imagePoints_run, img, axis, image_size, criteria, flags=0):
     """
-    Calibrates the camera for the given points and draws the 3D axes on the image.
+    Calibrates the camera for the given points and draws the 3D cube a the world origin
     
     objectPoints_run: 3d points from the calibration run
     imagePoints_run: 2d points from the calibration run
     img: the test image
-    
+
     """
     # Calibrate
     ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(
         objectPoints_run, imagePoints_run, image_size, None, None, flags=flags, criteria=criteria
     )
     
-    # Same test image for all runs
+    # Same test image for all runs -----------------------------------------------------------------> change if you want to use a different test image
     rvec = rvecs[3]
     tvec = tvecs[3]
     
     # Project 3D axes to 2D image
-    imgpts, _ = cv.projectPoints(axis, rvec, tvec, cameraMatrix, distCoeffs)
+    imgpts, _ = cv.projectPoints(cube, rvec, tvec, cameraMatrix, distCoeffs)
     pts = imgpts.reshape(-1,2).astype(int)
     
     origin_pt = tuple(pts[0])
+
+    #Color top face
+    top_face = np.array([pts[4], pts[5], pts[6], pts[7]], dtype=np.int32)
+    overlay = img.copy()
+    cv.fillPoly(overlay, [top_face], color=(0,255,0))
+    alpha = 0.5  # 0 = fully transparent, 1 = fully opaque
+    cv.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
     
-    # Draw axes
-    cv.line(img, origin_pt, tuple(pts[1]), (0,0,255), 5)  # X-axis red
-    cv.line(img, origin_pt, tuple(pts[2]), (0,255,0), 5)  # Y-axis green
-    cv.line(img, origin_pt, tuple(pts[3]), (255,0,0), 5)  # Z-axis blue
-    
+    # Draw cube
+    cv.line(img, tuple(pts[0]), tuple(pts[1]), (0,0,255), 2)
+    cv.line(img, tuple(pts[1]), tuple(pts[2]), (0,0,255), 2)
+    cv.line(img, tuple(pts[2]), tuple(pts[3]), (0,0,255), 2)
+    cv.line(img, tuple(pts[3]), tuple(pts[0]), (0,0,255), 2)
+    cv.line(img, tuple(pts[4]), tuple(pts[5]), (0,255,0), 2)
+    cv.line(img, tuple(pts[5]), tuple(pts[6]), (0,255,0), 2)
+    cv.line(img, tuple(pts[6]), tuple(pts[7]), (0,255,0), 2)
+    cv.line(img, tuple(pts[7]), tuple(pts[4]), (0,255,0), 2)
+    for i in range(4):
+        cv.line(img, tuple(pts[i]), tuple(pts[i+4]), (255,0,0), 2)
+
     # Display
-    cv.imshow("Axes overlay", img)
+    cv.imshow("Cube overlay", img)
     cv.waitKey(0)
     cv.destroyAllWindows()
     
     return cameraMatrix, distCoeffs, rvecs, tvecs
 
+
 # Run 1
-cameraMatrix1, distCoeffs1, rvecs1, tvecs1 = draw_axes(
+cameraMatrix1, distCoeffs1, rvecs1, tvecs1 = draw_cube(
     objectPoints_run1, imagePoints_run1, img.copy(), axis, image_size, criteria
 )
-
 # Run 2
-cameraMatrix2, distCoeffs2, rvecs2, tvecs2 = draw_axes(
+cameraMatrix2, distCoeffs2, rvecs2, tvecs2 = draw_cube(
     objectPoints_run2, imagePoints_run2, img.copy(), axis, image_size, criteria
 )
-
 # Run 3
-cameraMatrix3, distCoeffs3, rvecs3, tvecs3 = draw_axes(
+cameraMatrix3, distCoeffs3, rvecs3, tvecs3 = draw_cube(
     objectPoints_run3, imagePoints_run3, img.copy(), axis, image_size, criteria
 )
