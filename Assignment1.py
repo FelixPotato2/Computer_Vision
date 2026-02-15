@@ -4,6 +4,8 @@ import glob
 import os
 import shutil
 
+EDGE_SIZE = 25 # square edge size (in mm)
+criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001) # termination criteria
 pattern_size = (9,6)
 top_left = (0,0)
 top_right = (pattern_size[0] - 1, 0)
@@ -74,10 +76,57 @@ def interpolate_corners(points, cols, rows):
     img_grid = cv.perspectiveTransform(all_points.reshape(cols*rows, 1, 2), H)
     return img_grid
 
+def create_object_points(cols, rows, square_size_mm):
+    """
+    Create the 3D world coordinates of the chessboard corners.
+    
+    """
+    objp = []
 
+    for y in range(rows):
+        for x in range(cols):
+            X = x * EDGE_SIZE
+            Y = y * EDGE_SIZE
+            Z = 0.0
+            objp.append((X, Y, Z))
+
+    return np.array(objp, dtype=np.float32)
+
+
+# directories for the training images
+images = glob.glob('./images/*.jpg')
 manual_images = glob.glob('./bad_images/*.jpg')
 shutil.rmtree("new_images", ignore_errors=True)
 os.makedirs("new_images")
+
+# Arrays to store object points and image points from all the images.
+board_object_points = create_object_points(9, 6, EDGE_SIZE)
+objectPoints = []   # 3d point in real world space
+imagePoints = []    # 2d points in image plane.
+
+
+# prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
+objp = np.zeros((6*9,3), np.float32)
+objp[:,:2] = np.mgrid[0:9,0:6].T.reshape(-1,2)
+objp[:,:2] *= EDGE_SIZE 
+
+for fname in images:
+    img = cv.imread(fname)
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+
+    # Find the chess board corners
+    ret, corners = cv.findChessboardCorners(gray, (9,6), None)
+
+    # If found, add object points, image points (after refining them)
+    if ret == True:
+        objectPoints.append(objp)
+        corners2 = cv.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
+        imagePoints.append(corners2)
+
+        # Draw and display the corners
+        cv.drawChessboardCorners(img, (9,6), corners2, ret)
+        cv.imshow('img', img)
+        cv.waitKey(500)
 
 
 for fname in manual_images:
@@ -89,7 +138,8 @@ for fname in manual_images:
         "base": img.copy(),
         "display": img.copy(),
         "interpolation": img.copy(),
-        "points": [],
+        "2dpoints": [],
+        "3dpoints": [],
         "filename": fname
     }
 
@@ -101,15 +151,22 @@ for fname in manual_images:
     if key == 27:
         print("Exit")
         cv.destroyAllWindows()
-        print(state['points'])
+        print(state['2dpoints'])
         break
 
     if key == ord('s'):
         print("Skipped image: ", fname)
         continue
 
-    img_grid = interpolate_corners(state['points'], 9, 6)
-    
+    #interpolation to find other corners
+    img_grid = interpolate_corners(state['2dpoints'], 9, 6)
+
+    #distinction between 2D and 3D points
+    img_points = img_grid.reshape(-1, 2)
+    imagePoints.append(img_points)
+    objectPoints.append(board_object_points.copy())
+
+        
     for pt in img_grid:
         x,y = pt[0]
         cv.circle(state['interpolation'], (int(x),int(y)), 5, (255,0,0), -1)
@@ -119,7 +176,14 @@ for fname in manual_images:
 
     cv.waitKey(0)
     cv.destroyAllWindows()
-    print(state['points'])
+    print(state['2dpoints'])
+
+
+
+##########################################
+# Part 4
+
+# we must use ->   cv::calibrateCamera (InputArrayOfArrays objectPoints, InputArrayOfArrays imagePoints, Size imageSize, InputOutputArray cameraMatrix, InputOutputArray distCoeffs, OutputArrayOfArrays rvecs, OutputArrayOfArrays tvecs, int flags=0, TermCriteria criteria=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, DBL_EPSILON))
 
     
 
