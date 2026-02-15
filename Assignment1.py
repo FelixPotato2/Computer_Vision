@@ -180,10 +180,41 @@ for fname in manual_images:
 
 
 
-##########################################
-# Part 4
+"""""
+    Part 4: Camera calibration
 
-# we must use ->   cv::calibrateCamera (InputArrayOfArrays objectPoints, InputArrayOfArrays imagePoints, Size imageSize, InputOutputArray cameraMatrix, InputOutputArray distCoeffs, OutputArrayOfArrays rvecs, OutputArrayOfArrays tvecs, int flags=0, TermCriteria criteria=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, DBL_EPSILON))
+    We must use ->   cv::calibrateCamera (InputArrayOfArrays objectPoints, InputArrayOfArrays imagePoints,
+    Size imageSize, InputOutputArray cameraMatrix, InputOutputArray distCoeffs, OutputArrayOfArrays rvecs, 
+    OutputArrayOfArrays tvecs, int flags=0, TermCriteria criteria=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, DBL_EPSILON))
 
-    
+"""""
 
+# image size 
+image_size = (cv.imread(images[0]).shape[1], cv.imread(images[0]).shape[0])  # (width, height)
+
+# calibrate the camera
+ret, cameraMatrix, distCoeffs, rvecs, tvecs = cv.calibrateCamera(
+    objectPoints,    # list of 3D points per image
+    imagePoints,     # list of 2D points per image
+    image_size,      # image width and height
+    None,            # initial camera matrix (None → estimated)
+    None,            # initial distortion coefficients
+    flags=0,         # free center/origin point
+    criteria=criteria
+)
+
+# print results
+#print("Reprojection error:", ret)
+print("Camera matrix K:\n", cameraMatrix)
+#print("Distortion coefficients:\n", distCoeffs)
+
+
+"""
+Next:
+You will do three runs of calibration.
+
+Run 1: use all 25 training images (including the 5 images with manually provided corner points).
+Run 2: use only five images for which corner points were found automatically, and the five with manually provided corner points (10 images in total).
+Run 3: use only the five images for which corner points were found automatically from Run 2, but without the additional five (5 images in total).
+In each run, you will calibrate the camera. After calibration, you will need the camera intrinsics (or cameraMatrix) and the camera extrinsics (for Assignment 2).
+"""
