@@ -351,3 +351,53 @@ cameraMatrix2, distCoeffs2, rvecs2, tvecs2 = draw_cube(
 cameraMatrix3, distCoeffs3, rvecs3, tvecs3 = draw_cube(
     objectPoints_run3, imagePoints_run3, img.copy(), axis, image_size, criteria
 )
+
+
+"""
+    Choice task 1: real-time pose estimation
+
+"""
+
+# ---------------------------
+# open webcam
+# ---------------------------
+cap = cv.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+
+    found, corners = cv.findChessboardCorners(gray, pattern_size)
+
+    if found:
+        corners = cv.cornerSubPix(
+            gray, corners, (11,11), (-1,-1),
+            (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        )
+
+        # ----------------------------------
+        # pose estimation (NOT calibrateCamera)
+        # ----------------------------------
+        ok, rvec, tvec = cv.solvePnP(objp, corners, cameraMatrix1, distCoeffs1)
+
+        if ok:
+            imgpts, _ = cv.projectPoints(axis, rvec, tvec, cameraMatrix1, distCoeffs1)
+            pts = imgpts.reshape(-1,2).astype(int)
+
+            origin = tuple(pts[0])
+
+            cv.line(frame, origin, tuple(pts[1]), (0,0,255), 4)   # X
+            cv.line(frame, origin, tuple(pts[2]), (0,255,0), 4)   # Y
+            cv.line(frame, origin, tuple(pts[3]), (255,0,0), 4)   # Z
+
+    cv.imshow("Realtime pose", frame)
+
+    if cv.waitKey(1) == 27:  # ESC to quit
+        break
+
+
+cap.release()
+cv.destroyAllWindows()
