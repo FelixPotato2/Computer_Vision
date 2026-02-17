@@ -357,13 +357,13 @@ for fname in manual_images:
 
     # inverse warping to go back to original image
     H_inv = cv.getPerspectiveTransform(dst, src)
-    orig_pts = cv.perspectiveTransform(warped_grid, H_inv)
+    img_grid = cv.perspectiveTransform(warped_grid, H_inv)
 
-    img_points = orig_pts.reshape(-1, 2)
+    img_points = img_grid.reshape(-1, 2)
     manual_imagePoints.append(img_points)
     manual_objectPoints.append(board_object_points.copy())
 
-    for pt in orig_pts:
+    for pt in img_grid:
         x, y = pt[0]
         cv.circle(state['interpolation'], (int(x), int(y)), 5, (255, 0, 0), -1)
 
