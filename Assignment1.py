@@ -432,6 +432,4 @@ draw_cube(cameraMatrix1, distCoeffs1, img.copy(), axis, pattern_size=pattern_siz
 draw_cube(cameraMatrix2, distCoeffs2, img.copy(), axis, pattern_size=pattern_size, criteria=criteria)
 
 # Run 3
-cameraMatrix3, distCoeffs3, rvecs3, tvecs3 = draw_cube(
-    objectPoints_run3, imagePoints_run3, img.copy(), axis, image_size, criteria
-)
+draw_cube(cameraMatrix3, distCoeffs3, img.copy(), axis, pattern_size=pattern_size, criteria=criteria)
