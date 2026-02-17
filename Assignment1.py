@@ -145,7 +145,7 @@ def color_face(img, face, color, dist_m, alpha = 0.5):
         (center[0] + 10, center[1] +30),   # slight offset from center
         cv.FONT_HERSHEY_SIMPLEX,
         0.6,
-        (0,0,255),
+        (255,255,255),
         2,
         cv.LINE_AA
     )
@@ -170,10 +170,8 @@ def dynamic_color(img, face, dmin, dmax, rvec, tvec):
     face_top_center = np.array([[L/2, L/2, -L]], dtype = np.float32)
     R, _ = cv.Rodrigues(rvec)
 
-    print("Rvec: ", rvec)
     normal = R[:, 2]
     angle = np.degrees(np.arccos(np.clip(normal[2], -1.0, 1.0)))
-    print("Angle: ", angle)
 
     face_top_center_cam = R @ face_top_center.T + tvec
 
@@ -187,8 +185,6 @@ def dynamic_color(img, face, dmin, dmax, rvec, tvec):
     h = int(179 * (1 - np.clip(angle / 45.0, 0.0, 1.0)))
     s = 255
     v = int((1 - t) * 255)
-
-    print(f"HSV: ({h}, {s}, {v})")
     
     #Convert color to BGR 
     hsv_color = np.uint8([[[h, s, v]]])
@@ -260,8 +256,10 @@ def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, t
     if online!= True:
         # Display image
         cv.imshow("Cube overlay", img)
-        cv.waitKey(1)
-        cv.destroyAllWindows()
+
+        key = cv.waitKey(0)
+        if key == 27:
+            cv.destroyAllWindows()
 
     else:
         return img
@@ -312,7 +310,7 @@ for fname in images:
         cv.imshow('img', img)
         cv.waitKey(500)
 
-for fname in manual_images:
+for fname in manual_images[0:1]:
     
     img = cv.imread(fname)
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -443,7 +441,6 @@ print("##########################################\n")
 
 # Single test image
 img_path = test_images[1]
-#print(img_path)
 img = cv.imread(img_path)
 
 
