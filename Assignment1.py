@@ -457,40 +457,40 @@ draw_cube(img.copy(), cameraMatrix3, distCoeffs3, pattern_size=pattern_size, cri
     
 """
 
-# cap = cv.VideoCapture(0)
+cap = cv.VideoCapture(0)
 
-# while True:
-#     ret, frame = cap.read()
-#     if not ret:
-#         break
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-#     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-#     found, corners = cv.findChessboardCorners(gray, pattern_size)
+    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+    found, corners = cv.findChessboardCorners(gray, pattern_size)
 
-#     if found and corners is not None and len(corners) == len(objp):
-#         corners = cv.cornerSubPix(
-#             gray, corners, (11,11), (-1,-1),
-#             (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-#         )
+    if found and corners is not None and len(corners) == len(objp):
+        corners = cv.cornerSubPix(
+            gray, corners, (11,11), (-1,-1),
+            (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        )
 
-#         frame = draw_cube(
-#             img=frame,
-#             cameraMatrix=cameraMatrix1,
-#             distCoeffs=distCoeffs1,
-#             rvec=None,      
-#             tvec=None,
-#             pattern_size=pattern_size,
-#             criteria=criteria,
-#             online=True
-#         )
+        frame = draw_cube(
+            img=frame,
+            cameraMatrix=cameraMatrix1,
+            distCoeffs=distCoeffs1,
+            rvec=None,      
+            tvec=None,
+            pattern_size=pattern_size,
+            criteria=criteria,
+            online=True
+        )
 
-#     cv.imshow('Realtime pose', frame)
+    cv.imshow('Realtime pose', frame)
 
-#     if cv.waitKey(1) == 27:  # ESC to quit
-#         break
+    if cv.waitKey(1) == 27:  # ESC to quit
+        break
 
-# cap.release()
-# cv.destroyAllWindows()
+cap.release()
+cv.destroyAllWindows()
 
 
 """
