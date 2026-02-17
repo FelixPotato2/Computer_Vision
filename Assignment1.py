@@ -3,9 +3,10 @@ import cv2 as cv
 import glob
 import os
 import shutil
+import matplotlib.pyplot as plt
 
 EDGE_SIZE = 25 # size of the square edge (in mm)
-L = 75  # length of axes (TODO: for each square (?)) in mm
+L = 75  # length of axes in mm
 axis = np.float32([
     [0, 0, 0],   # origin
     [L, 0, 0],   # X
@@ -137,12 +138,11 @@ def color_face(img, face, color, dist_m, alpha = 0.5):
     cv.fillConvexPoly(overlay, face, color)
     cv.circle(overlay, center, 3, (0,0,0), -1)
 
-    # ---- Add distance text ----
     text = f"{dist_m:.2f} m"
     cv.putText(
         overlay,
         text,
-        (center[0] + 10, center[1] +30),   # slight offset from center
+        (center[0] + 10, center[1] +30),  
         cv.FONT_HERSHEY_SIMPLEX,
         0.6,
         (255,255,255),
@@ -179,7 +179,6 @@ def dynamic_color(img, face, dmin, dmax, rvec, tvec):
     dist = float(np.linalg.norm(face_top_center_cam))
     dist_m = dist / 1000
 
-    hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
     t = (dist_m - dmin) / (dmax - dmin)
     t = float(np.clip(t, 0.0, 1.0))
     h = int(179 * (1 - np.clip(angle / 45.0, 0.0, 1.0)))
@@ -222,16 +221,16 @@ def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, t
         _, rvec, tvec = cv.solvePnP(objp, corners, cameraMatrix, distCoeffs)
     
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    #hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
+
     # Find the chess board corners for the test image
     ret, corners = cv.findChessboardCorners(gray, (pattern_size[0],pattern_size[1]), None)
     board_object_points = create_object_points(9, 6, EDGE_SIZE)
 
     #Estimate for test image tvec and rvec
-    _, rvec, tvec = cv.solvePnP(board_object_points, corners, cameraMatrix1, distCoeffs1)
+    _, rvec, tvec = cv.solvePnP(board_object_points, corners, cameraMatrix, distCoeffs)
 
     # Project 3D axes to 2D image
-    imgpts, _ = cv.projectPoints(cube, rvec, tvec, cameraMatrix1, distCoeffs1)
+    imgpts, _ = cv.projectPoints(cube, rvec, tvec, cameraMatrix, distCoeffs)
     pts = imgpts.reshape(-1,2).astype(int)
     
     origin_pt = tuple(pts[0]) #TODO: ???
@@ -264,8 +263,6 @@ def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, t
     else:
         return img
 
-
-
 # directories for the training images
 images = glob.glob('./Images/*.jpg')
 manual_images = glob.glob('./bad_images/*.jpg')
@@ -280,10 +277,12 @@ auto_imagePoints = []
 manual_objectPoints = []
 manual_imagePoints = []
 
-# create np arrays for object points (why do we need new object points?)
-objp = np.zeros((pattern_size[1]*pattern_size[0],3), np.float32)
-objp[:,:2] = np.mgrid[0:pattern_size[0],0:pattern_size[1]].T.reshape(-1,2)
-objp[:,:2] *= EDGE_SIZE 
+# create np arrays for object points (TODO: why do we need new object points?)
+# objp = np.zeros((pattern_size[1]*pattern_size[0],3), np.float32)
+# objp[:,:2] = np.mgrid[0:pattern_size[0],0:pattern_size[1]].T.reshape(-1,2)
+# objp[:,:2] *= EDGE_SIZE 
+objp = create_object_points(9,6,EDGE_SIZE)
+
 
 for fname in images:
     img = cv.imread(fname)
@@ -292,16 +291,15 @@ for fname in images:
     # Find the chess board corners
     ret, corners = cv.findChessboardCorners(gray, (pattern_size[0],pattern_size[1]), None)
 
-    # If found, add object points, image points (after refining them)
     if ret == True:
         auto_objectPoints.append(objp)
         #what is this for? do we really need it?
         corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
 
         # Reorder the corners to ensure top-left is origin 
-        corners2 = corners2.reshape(pattern_size[1], pattern_size[0], 2)
-        corners2 = np.flipud(np.fliplr(corners2))
-        corners2 = corners2.reshape(-1,2)
+        # corners2 = corners2.reshape(pattern_size[1], pattern_size[0], 2)
+        # corners2 = np.flipud(np.fliplr(corners2))
+        # corners2 = corners2.reshape(-1,2)
 
         auto_imagePoints.append(corners2)
 
@@ -459,37 +457,123 @@ draw_cube(img.copy(), cameraMatrix3, distCoeffs3, pattern_size=pattern_size, cri
     
 """
 
-cap = cv.VideoCapture(0)
+# cap = cv.VideoCapture(0)
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+# while True:
+#     ret, frame = cap.read()
+#     if not ret:
+#         break
 
-    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-    found, corners = cv.findChessboardCorners(gray, pattern_size)
+#     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+#     found, corners = cv.findChessboardCorners(gray, pattern_size)
 
-    if found and corners is not None and len(corners) == len(objp):
-        corners = cv.cornerSubPix(
-            gray, corners, (11,11), (-1,-1),
-            (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-        )
+#     if found and corners is not None and len(corners) == len(objp):
+#         corners = cv.cornerSubPix(
+#             gray, corners, (11,11), (-1,-1),
+#             (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+#         )
 
-        frame = draw_cube(
-            img=frame,
-            cameraMatrix=cameraMatrix1,
-            distCoeffs=distCoeffs1,
-            rvec=None,      
-            tvec=None,
-            pattern_size=pattern_size,
-            criteria=criteria,
-            online=True
-        )
+#         frame = draw_cube(
+#             img=frame,
+#             cameraMatrix=cameraMatrix1,
+#             distCoeffs=distCoeffs1,
+#             rvec=None,      
+#             tvec=None,
+#             pattern_size=pattern_size,
+#             criteria=criteria,
+#             online=True
+#         )
 
-    cv.imshow('Realtime pose', frame)
+#     cv.imshow('Realtime pose', frame)
 
-    if cv.waitKey(1) == 27:  # ESC to quit
-        break
+#     if cv.waitKey(1) == 27:  # ESC to quit
+#         break
 
-cap.release()
-cv.destroyAllWindows()
+# cap.release()
+# cv.destroyAllWindows()
+
+
+"""
+    Choice task 6
+
+"""
+cam_pos1 = []
+cam_orient = []
+cam_R = []
+
+for rvec, tvec in zip(rvecs1, tvecs1):
+    R, _ = cv.Rodrigues(rvec)
+    cam_pos = (-R.T @ tvec).reshape(3,)
+    cam_pos1.append(cam_pos)
+    cam_dir = (R.T @ np.array([0, 0, 1.0])).reshape(3)
+    cam_dir = cam_dir / np.linalg.norm(cam_dir)
+    cam_orient.append(cam_dir)
+    cam_R.append(R)
+
+#print(cam_pos1)
+
+#plot the points in 3d plane
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+arrow_len = 4 * EDGE_SIZE
+
+cam_pos1 = np.array(cam_pos1, dtype=float)
+cam_orient = np.array(cam_orient, dtype=float)
+
+# Flip Z axis
+cam_pos1[:,2] *= -1
+cam_orient[:,2] *= -1
+ax.scatter(cam_pos1[:,0], cam_pos1[:,1], cam_pos1[:,2], s=10)
+
+ax.quiver(cam_pos1[:,0], cam_pos1[:,1], cam_pos1[:,2],
+          cam_orient[:,0], cam_orient[:,1], cam_orient[:,2],
+          length=arrow_len, normalize=True)
+
+# --- Robust zoom: keep only central range per-axis (cuts outliers) ---
+qlo, qhi = 0.10, 0.90   # try (0.2, 0.8) for even closer
+
+xmin, ymin, zmin = np.quantile(cam_pos1, qlo, axis=0)
+xmax, ymax, zmax = np.quantile(cam_pos1, qhi, axis=0)
+
+pad = 0.15  # expand a bit so it doesn't clip
+dx, dy, dz = (xmax-xmin), (ymax-ymin), (zmax-zmin)
+
+ax.set_xlim(xmin - pad*dx, xmax + pad*dx)
+ax.set_ylim(ymin - pad*dy, ymax + pad*dy)
+ax.set_zlim(zmin - pad*dz, zmax + pad*dz)
+
+ax.view_init(elev=25, azim=-60)
+
+# Chessboard plane Z=0 with correct extents (mm)
+board_w = (pattern_size[0] - 1) * EDGE_SIZE
+board_h = (pattern_size[1] - 1) * EDGE_SIZE
+xx, yy = np.meshgrid([0, board_w], [0, board_h])
+zz = np.zeros_like(xx)
+ax.plot_surface(xx, yy, zz, alpha=0.1)
+
+ax.set_xlabel("X (mm)")
+ax.set_ylabel("Y (mm)")
+ax.set_zlabel("Z (mm)")
+
+def set_axes_equal(ax):
+    x_limits = ax.get_xlim3d()
+    y_limits = ax.get_ylim3d()
+    z_limits = ax.get_zlim3d()
+
+    x_range = abs(x_limits[1] - x_limits[0])
+    y_range = abs(y_limits[1] - y_limits[0])
+    z_range = abs(z_limits[1] - z_limits[0])
+
+    x_mid = np.mean(x_limits)
+    y_mid = np.mean(y_limits)
+    z_mid = np.mean(z_limits)
+
+    plot_radius = 0.5 * max([x_range, y_range, z_range])
+
+    ax.set_xlim3d([x_mid - plot_radius, x_mid + plot_radius])
+    ax.set_ylim3d([y_mid - plot_radius, y_mid + plot_radius])
+    ax.set_zlim3d([z_mid - plot_radius, z_mid + plot_radius])
+
+set_axes_equal(ax)
+
+plt.show()
