@@ -94,7 +94,7 @@ def interpolate_corners(points, cols, rows):
     img_grid = cv.perspectiveTransform(all_points.reshape(cols*rows, 1, 2), H)
     return img_grid
 
-def create_object_points(cols, rows, square_size_mm):
+def create_object_points(cols, rows, square_size_mm = EDGE_SIZE):
     """
     Create the 3D world coordinates of the chessboard corners.
     """
@@ -102,8 +102,8 @@ def create_object_points(cols, rows, square_size_mm):
 
     for y in range(rows):
         for x in range(cols):
-            X = x * EDGE_SIZE
-            Y = y * EDGE_SIZE
+            X = x * square_size_mm
+            Y = y * square_size_mm
             Z = 0.0
             objp.append((X, Y, Z))
 
@@ -315,6 +315,7 @@ for fname in images:
 for fname in manual_images:
     
     img = cv.imread(fname)
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
     state = {
         "original": img.copy(),
@@ -341,17 +342,30 @@ for fname in manual_images:
         print("Skipped image: ", fname)
         continue
 
-    # interpolation to find other corners
-    img_grid = interpolate_corners(state['2dpoints'], pattern_size[0], pattern_size[1])                          
+    src = np.array(state['2dpoints'], dtype=np.float32)
+    W, H = 900, 600
+    dst = np.float32([[0, 0], [W-1, 0], [W-1, H-1], [0, H-1]]) # the corners to be warped
 
-    #distinction between 2D and 3D points
-    img_points = img_grid.reshape(-1, 2)
+    # warping for better corner estimation
+    H_warp = cv.getPerspectiveTransform(src, dst)
+    warped = cv.warpPerspective(img, H_warp, (W, H))
+
+    # interpolation
+    warped_grid = interpolate_corners(dst, pattern_size[0], pattern_size[1])
+    warped_grid = warped_grid.reshape(-1, 1, 2).astype(np.float32)
+    cv.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
+
+    # inverse warping to go back to original image
+    H_inv = cv.getPerspectiveTransform(dst, src)
+    orig_pts = cv.perspectiveTransform(warped_grid, H_inv)
+
+    img_points = orig_pts.reshape(-1, 2)
     manual_imagePoints.append(img_points)
     manual_objectPoints.append(board_object_points.copy())
 
-    for pt in img_grid:
-        x,y = pt[0]
-        cv.circle(state['interpolation'], (int(x),int(y)), 5, (255,0,0), -1)
+    for pt in orig_pts:
+        x, y = pt[0]
+        cv.circle(state['interpolation'], (int(x), int(y)), 5, (255, 0, 0), -1)
 
     cv.imshow('Image', state["interpolation"])
     new_path = os.path.join("new_images", os.path.basename(fname))
