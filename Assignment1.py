@@ -288,9 +288,9 @@ for fname in images:
         corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
 
         # Reorder the corners to ensure top-left is origin 
-        # corners2 = corners2.reshape(pattern_size[1], pattern_size[0], 2)
-        # corners2 = np.flipud(np.fliplr(corners2))
-        # corners2 = corners2.reshape(-1,2)
+        corners2 = corners2.reshape(pattern_size[1], pattern_size[0], 2)
+        corners2 = np.flipud(np.fliplr(corners2))
+        corners2 = corners2.reshape(-1,2)
 
         auto_imagePoints.append(corners2)
 
