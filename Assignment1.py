@@ -178,11 +178,9 @@ def dynamic_color(img, face, dmin, dmax, angle, rvec, tvec):
     hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
     t = (dist_m - dmin) / (dmax - dmin)
     t = float(np.clip(t, 0.0, 1.0))
-    t_ang = angle/45
-    t_ang = float(np.clip(t_ang, 0, 1))
     h = int(np.clip(angle / 45.0, 0.0, 1.0) * 179)
     s = 255
-    v = int((1 - t_ang) * 225)
+    v = int((1 - t) * 225)
     
     #Convert color to BGR 
     hsv_color = np.uint8([[[h, s, v]]])
@@ -219,6 +217,7 @@ def draw_cube(cameraMatrix, distCoeffs, img, axis, pattern_size, criteria, flags
 
     #Estimate for test image tvec and rvec
     _, rvec, tvec = cv.solvePnP(board_object_points, corners, cameraMatrix, distCoeffs)
+
     # Project 3D axes to 2D image
     imgpts, _ = cv.projectPoints(cube, rvec, tvec, cameraMatrix, distCoeffs)
     pts = imgpts.reshape(-1,2).astype(int)
@@ -433,3 +432,53 @@ draw_cube(cameraMatrix2, distCoeffs2, img.copy(), axis, pattern_size=pattern_siz
 
 # Run 3
 draw_cube(cameraMatrix3, distCoeffs3, img.copy(), axis, pattern_size=pattern_size, criteria=criteria)
+
+
+"""
+    Choice task 1: real-time pose estimation
+    
+"""
+
+# ---------------------------
+# open webcam
+# ---------------------------
+cap = cv.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+
+    found, corners = cv.findChessboardCorners(gray, pattern_size)
+
+    if found:
+        corners = cv.cornerSubPix(
+            gray, corners, (11,11), (-1,-1),
+            (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        )
+
+        # ----------------------------------
+        # pose estimation (NOT calibrateCamera)
+        # ----------------------------------
+        ok, rvec, tvec = cv.solvePnP(objp, corners, cameraMatrix1, distCoeffs1)
+
+        if ok:
+            imgpts, _ = cv.projectPoints(axis, rvec, tvec, cameraMatrix1, distCoeffs1)
+            pts = imgpts.reshape(-1,2).astype(int)
+
+            origin = tuple(pts[0])
+
+            cv.line(frame, origin, tuple(pts[1]), (0,0,255), 4)   # X
+            cv.line(frame, origin, tuple(pts[2]), (0,255,0), 4)   # Y
+            cv.line(frame, origin, tuple(pts[3]), (255,0,0), 4)   # Z
+
+    cv.imshow("Realtime pose", frame)
+
+    if cv.waitKey(1) == 27:  # ESC to quit
+        break
+
+
+cap.release()
+cv.destroyAllWindows()
