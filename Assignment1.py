@@ -153,7 +153,7 @@ def color_face(img, face, color, dist_m, alpha = 0.5):
     cv.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
     return img
 
-def dynamic_color(img, face, dmin, dmax, angle, rvec, tvec):
+def dynamic_color(img, face, dmin, dmax, rvec, tvec):
     """
     Function to dynamically assing color to the considered face of a convex polygon based 
     on the distance from the camera.
@@ -169,6 +169,12 @@ def dynamic_color(img, face, dmin, dmax, angle, rvec, tvec):
     # Calculate the center and transform it to camera coordinates
     face_top_center = np.array([[L/2, L/2, -L]], dtype = np.float32)
     R, _ = cv.Rodrigues(rvec)
+
+    print("Rvec: ", rvec)
+    normal = R[:, 2]
+    angle = np.degrees(np.arccos(np.clip(normal[2], -1.0, 1.0)))
+    print("Angle: ", angle)
+
     face_top_center_cam = R @ face_top_center.T + tvec
 
     #Calculate the idistance form the camera to the top center point
@@ -178,9 +184,11 @@ def dynamic_color(img, face, dmin, dmax, angle, rvec, tvec):
     hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
     t = (dist_m - dmin) / (dmax - dmin)
     t = float(np.clip(t, 0.0, 1.0))
-    h = int(np.clip(angle / 45.0, 0.0, 1.0) * 179)
+    h = int(179 * (1 - np.clip(angle / 45.0, 0.0, 1.0)))
     s = 255
-    v = int((1 - t) * 225)
+    v = int((1 - t) * 255)
+
+    print(f"HSV: ({h}, {s}, {v})")
     
     #Convert color to BGR 
     hsv_color = np.uint8([[[h, s, v]]])
@@ -190,16 +198,14 @@ def dynamic_color(img, face, dmin, dmax, angle, rvec, tvec):
     #Assign the color automatically
     return color_face(img, face, bgr_color, dist_m)
 
-#TODO: Here why do we need the axis parameter if we do not use it?
-
-def draw_cube(cameraMatrix, distCoeffs, img, axis, pattern_size, criteria, flags=0):
+def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, tvec=None, online=False):
+    
     """
     Calibrates the camera for the given points and draws the 3D cube a the world origin
     
     param: objectPoints_run: 3d points from the calibration run
     param: imagePoints_run: 2d points from the calibration run
     param: img: the test image
-    param: axis: ???
     param: image_size: tuple containing size of the image we are considering
     param: criteria: ????
     param: flags: ????
@@ -209,6 +215,16 @@ def draw_cube(cameraMatrix, distCoeffs, img, axis, pattern_size, criteria, flags
     return tvecs: 3x1 position vectors representing the position of the object in the camera coordinate systems
 
     """
+
+    if rvec is None or tvec is None:
+        # fallback for still images
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        ret, corners = cv.findChessboardCorners(gray, pattern_size)
+        if not ret:
+            return img
+        objp = create_object_points(9,6,EDGE_SIZE)
+        _, rvec, tvec = cv.solvePnP(objp, corners, cameraMatrix, distCoeffs)
+    
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     #hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
     # Find the chess board corners for the test image
@@ -216,25 +232,18 @@ def draw_cube(cameraMatrix, distCoeffs, img, axis, pattern_size, criteria, flags
     board_object_points = create_object_points(9, 6, EDGE_SIZE)
 
     #Estimate for test image tvec and rvec
-    _, rvec, tvec = cv.solvePnP(board_object_points, corners, cameraMatrix, distCoeffs)
+    _, rvec, tvec = cv.solvePnP(board_object_points, corners, cameraMatrix1, distCoeffs1)
 
     # Project 3D axes to 2D image
-    imgpts, _ = cv.projectPoints(cube, rvec, tvec, cameraMatrix, distCoeffs)
+    imgpts, _ = cv.projectPoints(cube, rvec, tvec, cameraMatrix1, distCoeffs1)
     pts = imgpts.reshape(-1,2).astype(int)
     
     origin_pt = tuple(pts[0]) #TODO: ???
     dist = float(np.linalg.norm(tvec))
-
-    R, _ = cv.Rodrigues(rvec)
-    n_obj = np.array([[0.0], [0.0], [-1.0]], dtype=np.float32)   # top face normal in object coords
-    n_cam = R @ n_obj
-    cos_theta = float(n_cam[2, 0] / np.linalg.norm(n_cam))         # dot(n_cam, [0,0,1]) since z_cam is [0,0,1]
-    cos_theta = float(np.clip(cos_theta, -1.0, 1.0))
-    angle = float(np.degrees(np.arccos(cos_theta)))
-
+    
     #Color top face
     top_face = np.array([pts[4], pts[5], pts[6], pts[7]], dtype=np.int32)
-    img = dynamic_color(img, top_face, dmin=0.0, dmax=4.0, angle=angle, rvec=rvec, tvec=tvec)
+    img = dynamic_color(img, top_face, dmin=0.0, dmax=4.0, rvec=rvec, tvec=tvec)
 
     # Draw cube
     cv.line(img, tuple(pts[0]), tuple(pts[1]), (0,0,255), 2)
@@ -248,12 +257,17 @@ def draw_cube(cameraMatrix, distCoeffs, img, axis, pattern_size, criteria, flags
     for i in range(4):
         cv.line(img, tuple(pts[i]), tuple(pts[i+4]), (255,0,0), 2)
 
-    # Display image
-    cv.imshow("Cube overlay", img)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
-    
-    #return cameraMatrix, distCoeffs, rvecs, tvecs
+    if online!= True:
+        # Display image
+        cv.imshow("Cube overlay", img)
+        cv.waitKey(1)
+        cv.destroyAllWindows()
+
+    else:
+        return img
+
+
+
 # directories for the training images
 images = glob.glob('./Images/*.jpg')
 manual_images = glob.glob('./bad_images/*.jpg')
@@ -328,12 +342,7 @@ for fname in manual_images:
         continue
 
     # interpolation to find other corners
-    img_grid = interpolate_corners(state['2dpoints'], pattern_size[0], pattern_size[1])
-
-    # reorder the corners to ensure top-left is origin --> this breaks the code, for now we can just keep it and trust that people will follow instructions :')
-    # img_grid = img_grid.reshape(pattern_size[0], pattern_size[1], 2)    
-    # img_grid = np.flipud(np.fliplr(img_grid))                           
-    # img_points = img_grid.reshape(-1, 2)                                
+    img_grid = interpolate_corners(state['2dpoints'], pattern_size[0], pattern_size[1])                          
 
     #distinction between 2D and 3D points
     img_points = img_grid.reshape(-1, 2)
@@ -350,7 +359,6 @@ for fname in manual_images:
 
     cv.waitKey(0)
     cv.destroyAllWindows()
-    #print(state['2dpoints'])
 
 
 """
@@ -424,14 +432,15 @@ img_path = test_images[1]
 #print(img_path)
 img = cv.imread(img_path)
 
+
 # Run 1
-draw_cube(cameraMatrix1, distCoeffs1, img.copy(), axis, pattern_size=pattern_size, criteria=criteria)
+draw_cube(img.copy(), cameraMatrix1, distCoeffs1, pattern_size=pattern_size, criteria=criteria, online=False)
 
 # Run 2
-draw_cube(cameraMatrix2, distCoeffs2, img.copy(), axis, pattern_size=pattern_size, criteria=criteria)
+draw_cube(img.copy(), cameraMatrix2, distCoeffs2, pattern_size=pattern_size, criteria=criteria, online=False)
 
 # Run 3
-draw_cube(cameraMatrix3, distCoeffs3, img.copy(), axis, pattern_size=pattern_size, criteria=criteria)
+draw_cube(img.copy(), cameraMatrix3, distCoeffs3, pattern_size=pattern_size, criteria=criteria, online=False)
 
 
 """
@@ -439,9 +448,6 @@ draw_cube(cameraMatrix3, distCoeffs3, img.copy(), axis, pattern_size=pattern_siz
     
 """
 
-# ---------------------------
-# open webcam
-# ---------------------------
 cap = cv.VideoCapture(0)
 
 while True:
@@ -450,35 +456,29 @@ while True:
         break
 
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-
     found, corners = cv.findChessboardCorners(gray, pattern_size)
 
-    if found:
+    if found and corners is not None and len(corners) == len(objp):
         corners = cv.cornerSubPix(
             gray, corners, (11,11), (-1,-1),
             (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
         )
 
-        # ----------------------------------
-        # pose estimation (NOT calibrateCamera)
-        # ----------------------------------
-        ok, rvec, tvec = cv.solvePnP(objp, corners, cameraMatrix1, distCoeffs1)
+        frame = draw_cube(
+            img=frame,
+            cameraMatrix=cameraMatrix1,
+            distCoeffs=distCoeffs1,
+            rvec=None,      
+            tvec=None,
+            pattern_size=pattern_size,
+            criteria=criteria,
+            online=True
+        )
 
-        if ok:
-            imgpts, _ = cv.projectPoints(axis, rvec, tvec, cameraMatrix1, distCoeffs1)
-            pts = imgpts.reshape(-1,2).astype(int)
-
-            origin = tuple(pts[0])
-
-            cv.line(frame, origin, tuple(pts[1]), (0,0,255), 4)   # X
-            cv.line(frame, origin, tuple(pts[2]), (0,255,0), 4)   # Y
-            cv.line(frame, origin, tuple(pts[3]), (255,0,0), 4)   # Z
-
-    cv.imshow("Realtime pose", frame)
+    cv.imshow('Realtime pose', frame)
 
     if cv.waitKey(1) == 27:  # ESC to quit
         break
-
 
 cap.release()
 cv.destroyAllWindows()
