@@ -101,6 +101,11 @@ def signed_area(p):
     return 0.5 * np.sum(x * np.roll(y, -1) - y * np.roll(x, -1))
 
 def order_points(src, pattern_size):
+    """
+    Function to order points in the correct clockwise order,
+    based on the angle between each manually added corner points
+
+    """
     src = np.asarray(src, np.float32)
     cx = np.mean(src[:,0])
     cy = np.mean(src[:,1])
@@ -136,8 +141,8 @@ def order_points(src, pattern_size):
 
     expected = (pattern_size[0] - 1) / (pattern_size[1] - 1)
 
-    len_x = np.linalg.norm(ordered_points[1] - ordered_points[0])  # TR-TL
-    len_y = np.linalg.norm(ordered_points[3] - ordered_points[0])  # BL-TL
+    len_x = np.linalg.norm(ordered_points[1] - ordered_points[0])  # top right, top left
+    len_y = np.linalg.norm(ordered_points[3] - ordered_points[0])  # bottom left, top left
     observed = len_x / (len_y + 1e-9)
     if observed < 1.0 and expected > 1.0:
         ordered_points = np.array([ordered_points[0], ordered_points[3], ordered_points[2], ordered_points[1]], np.float32)
@@ -333,10 +338,6 @@ auto_imagePoints = []
 manual_objectPoints = []
 manual_imagePoints = []
 
-# create np arrays for object points (TODO: why do we need new object points?)
-# objp = np.zeros((pattern_size[1]*pattern_size[0],3), np.float32)
-# objp[:,:2] = np.mgrid[0:pattern_size[0],0:pattern_size[1]].T.reshape(-1,2)
-# objp[:,:2] *= EDGE_SIZE 
 objp = create_object_points(pattern_size[0], pattern_size[1],EDGE_SIZE)
 
 
@@ -349,13 +350,7 @@ for fname in images[:25]:
 
     if ret == True:
         auto_objectPoints.append(objp)
-        #what is this for? do we really need it?
         corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
-
-        # Reorder the corners to ensure top-left is origin 
-        # corners2 = corners2.reshape(pattern_size[1], pattern_size[0], 2)
-        # corners2 = np.flipud(np.fliplr(corners2))
-        # corners2 = corners2.reshape(-1,2)
 
         auto_imagePoints.append(corners2)
 
@@ -394,37 +389,13 @@ for fname in manual_images:
         print("Skipped image: ", fname)
         continue
 
-    # warping for better corner estimation
     if len(state['2dpoints']) != 4:
         print(f'This image was skipped : {fname}. Please select at least 4 points in the next one.')
         continue
 
     src = np.array(state['2dpoints'], dtype=np.float32)
 
-    # --------------- Enforce order -----------------
-
-    # # Find top-left and bottom-right
-    # sum_coord = src[:,0] + src[:,1]
-    # new_top_left = src[np.argmin(sum_coord)]
-    # new_bottom_right = src[np.argmax(sum_coord)]
-
-    # # Find bottom-left and top-right
-    # diff_coord = src[:,0] - src[:,1]
-    # new_bottom_left = src[np.argmax(diff_coord)]
-    # new_top_right = src[np.argmin(diff_coord)]
-
-    # cx = np.mean(src[:,0])
-    # cy = np.mean(src[:,1])
-    # angles = np.arctan2(src[:, 1] - cy, src[:, 0] - cx)
-    # order = np.argsort(angles)
-    # pts = src[order]
-    
-    # sums = pts[:,0] + pts[:,1]
-    # start = np.argmin(sums)
-    # pts = np.roll(pts, -start, axis=0)
-
-    # if signed_area(pts) > 0:
-    #     pts = np.array([pts[0], pts[3], pts[2], pts[1]], dtype=np.float32)
+    # --------------- Enforce order -----------------#
 
     src = np.array(state['2dpoints'], dtype = np.float32)
     ordered = order_points(src, pattern_size = pattern_size)
@@ -443,6 +414,7 @@ for fname in manual_images:
     W = (pattern_size[0] - 1) * 100
     H = (pattern_size[1] - 1) * 100
     
+    #warping for better corner estimation
     H_warp = cv.getPerspectiveTransform(ordered_refined, dst)
     warped = cv.warpPerspective(img, H_warp, (W, H))
     gray_warped = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
@@ -628,13 +600,12 @@ ax.quiver(cam_pos1[:,0], cam_pos1[:,1], cam_pos1[:,2],
           cam_orient[:,0], cam_orient[:,1], cam_orient[:,2],
           length=arrow_len, normalize=True)
 
-# --- Robust zoom: keep only central range per-axis (cuts outliers) ---
-qlo, qhi = 0.10, 0.90   # try (0.2, 0.8) for even closer
+qlo, qhi = 0.10, 0.90
 
 xmin, ymin, zmin = np.quantile(cam_pos1, qlo, axis=0)
 xmax, ymax, zmax = np.quantile(cam_pos1, qhi, axis=0)
 
-pad = 0.15  # expand a bit so it doesn't clip
+pad = 0.15
 dx, dy, dz = (xmax-xmin), (ymax-ymin), (zmax-zmin)
 
 ax.set_xlim(xmin - pad*dx, xmax + pad*dx)
@@ -643,7 +614,7 @@ ax.set_zlim(zmin - pad*dz, zmax + pad*dz)
 
 ax.view_init(elev=25, azim=-60)
 
-# Chessboard plane Z=0 with correct extents (mm)
+# chessboard plane z=0
 board_w = (pattern_size[0] - 1) * EDGE_SIZE
 board_h = (pattern_size[1] - 1) * EDGE_SIZE
 xx, yy = np.meshgrid([0, board_w], [0, board_h])
