@@ -5,6 +5,7 @@ import os
 import shutil
 import matplotlib.pyplot as plt
 
+save_id = 1
 EDGE_SIZE = 25 # size of the square edge (in mm)
 L = 75  # length of axes in mm
 axis = np.float32([
@@ -254,7 +255,12 @@ def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, t
 
     if online!= True:
         # Display image
+        global save_id
         cv.imshow("Cube overlay", img)
+        cv.imwrite(f"./cube_runs/cube_overlay{save_id}.png", img)
+        save_id += 1
+
+
 
         key = cv.waitKey(0)
         if key == 27:
@@ -284,7 +290,7 @@ manual_imagePoints = []
 objp = create_object_points(9,6,EDGE_SIZE)
 
 
-for fname in images:
+for fname in images[:25]:
     img = cv.imread(fname)
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
@@ -308,7 +314,7 @@ for fname in images:
         cv.imshow('img', img)
         cv.waitKey(500)
 
-for fname in manual_images[0:1]:
+for fname in manual_images:
     
     img = cv.imread(fname)
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -340,16 +346,17 @@ for fname in manual_images[0:1]:
 
     src = np.array(state['2dpoints'], dtype=np.float32)
     W, H = 900, 600
-    dst = np.float32([[0, 0], [W-1, 0], [W-1, H-1], [0, H-1]]) # the corners to be warped
+    dst = np.float32([[0, 0], [W-1, 0], [W-1, H-1], [0, H-1]]) # the corners
 
     # warping for better corner estimation
     H_warp = cv.getPerspectiveTransform(src, dst)
     warped = cv.warpPerspective(img, H_warp, (W, H))
+    gray_warped = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
 
     # interpolation
     warped_grid = interpolate_corners(dst, pattern_size[0], pattern_size[1])
     warped_grid = warped_grid.reshape(-1, 1, 2).astype(np.float32)
-    cv.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
+    cv.cornerSubPix(gray_warped, warped_grid, (11,11), (-1,-1), criteria)
 
     # inverse warping to go back to original image
     H_inv = cv.getPerspectiveTransform(dst, src)
