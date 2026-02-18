@@ -8,14 +8,14 @@ import matplotlib.pyplot as plt
 save_id = 1
 EDGE_SIZE = 25 # size of the square edge (in mm)
 L = 75  # length of axes in mm
-axis = np.float32([
+AXES = np.float32([
     [0, 0, 0],   # origin
-    [L, 0, 0],   # X
-    [0, L, 0],   # Y
-    [0, 0, -L]   # Z 
+    [L*2, 0, 0],   # X
+    [0, L*2, 0],   # Y
+    [0, 0, -L*2]   # Z 
 ])
 
-cube = np.float32([
+CUBE = np.float32([
     [0,0,0],       # bottom-front-left
     [L,0,0],       # bottom-front-right
     [L,L,0],       # bottom-back-right
@@ -96,6 +96,54 @@ def interpolate_corners(points, cols, rows):
     img_grid = cv.perspectiveTransform(all_points.reshape(cols*rows, 1, 2), H)
     return img_grid
 
+def signed_area(p):
+    x, y = p[:, 0], p[:, 1]
+    return 0.5 * np.sum(x * np.roll(y, -1) - y * np.roll(x, -1))
+
+def order_points(src, pattern_size):
+    src = np.asarray(src, np.float32)
+    cx = np.mean(src[:,0])
+    cy = np.mean(src[:,1])
+    angles = np.arctan2(src[:, 1] - cy, src[:, 0] - cx)
+    order = np.argsort(angles)
+    pts = src[order]
+
+    if signed_area(pts) > 0:
+        pts = pts[::-1]
+
+    best_i = None
+    best_y = 1e10
+    for i in range(4):
+        p = pts[i]
+        q = pts[(i+1) % 4]
+        y_avg = 0.5 * (p[1] + q[1])
+        if y_avg < best_y:
+            best_y = y_avg
+            best_i = i
+    p_top0 = pts[best_i]
+    p_top1 = pts[(best_i + 1) % 4]
+
+    if p_top0[0] < p_top1[0]:
+        top_left, top_right = p_top0, p_top1
+        bottom_right = pts[(best_i + 2) % 4]
+        bottom_left = pts[(best_i + 3) % 4]
+    else:
+        top_left, top_right = p_top1, p_top0
+        bottom_right = pts[(best_i + 3) % 4]
+        bottom_left = pts[(best_i + 2) % 4]
+    
+    ordered_points = np.array([top_left, top_right, bottom_right, bottom_left], np.float32)
+
+    expected = (pattern_size[0] - 1) / (pattern_size[1] - 1)
+
+    len_x = np.linalg.norm(ordered_points[1] - ordered_points[0])  # TR-TL
+    len_y = np.linalg.norm(ordered_points[3] - ordered_points[0])  # BL-TL
+    observed = len_x / (len_y + 1e-9)
+    if observed < 1.0 and expected > 1.0:
+        ordered_points = np.array([ordered_points[0], ordered_points[3], ordered_points[2], ordered_points[1]], np.float32)
+    return ordered_points
+
+
 def create_object_points(cols, rows, square_size_mm = EDGE_SIZE):
     """
     Create the 3D world coordinates of the chessboard corners.
@@ -157,14 +205,14 @@ def color_face(img, face, color, dist_m, alpha = 0.5):
 def dynamic_color(img, face, dmin, dmax, rvec, tvec):
     """
     Function to dynamically assing color to the considered face of a convex polygon based 
-    on the distance from the camera.
-    param: img: 
-    param: face:
-    param dist:
-    param dmin:
-    param dmax: 
-    param angle:
-    returns: 
+    on the distance from the camera and the orientation.
+    param: img: np.ndarray, input BGR image
+    param: face: np.ndarray, Array of 2D image pixel coordinates defining the polygon face to color
+    param dmin: float, representing the minimum distance (in meters) used for normalization/clipping for brightness
+    param dmax: float, representing the maximum distance (in meters) used for normalization/clipping for brightness
+    param rvec: np.ndarray, rotation vector
+    param tvec: np.ndarray, translation vector
+    returns: np.ndarray output BGR image
     """
 
     # Calculate the center and transform it to camera coordinates
@@ -194,7 +242,7 @@ def dynamic_color(img, face, dmin, dmax, rvec, tvec):
     #Assign the color automatically
     return color_face(img, face, bgr_color, dist_m)
 
-def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, tvec=None, online=False):
+def draw_cube(img, cameraMatrix, distCoeffs, pattern_size ,rvec=None, tvec=None, online=False):
     
     """
     Calibrates the camera for the given points and draws the 3D cube a the world origin
@@ -202,9 +250,7 @@ def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, t
     param: objectPoints_run: 3d points from the calibration run
     param: imagePoints_run: 2d points from the calibration run
     param: img: the test image
-    param: image_size: tuple containing size of the image we are considering
-    param: criteria: ????
-    param: flags: ????
+    param: pattern_size: tuple containing size of the image we are considering
     return: cameraMatrix: 3x3 calibration matrix
     return: distCoeffs: np array representing coefficient correcting lens distortion
     return: rvecs: 3x1 rotation vector representing the position of the object relative to the camera
@@ -218,56 +264,60 @@ def draw_cube(img, cameraMatrix, distCoeffs, pattern_size, criteria,rvec=None, t
         ret, corners = cv.findChessboardCorners(gray, pattern_size)
         if not ret:
             return img
-        objp = create_object_points(9,6,EDGE_SIZE)
+        objp = create_object_points(pattern_size[0],pattern_size[1],EDGE_SIZE)
         _, rvec, tvec = cv.solvePnP(objp, corners, cameraMatrix, distCoeffs)
     
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
     # Find the chess board corners for the test image
     ret, corners = cv.findChessboardCorners(gray, (pattern_size[0],pattern_size[1]), None)
-    board_object_points = create_object_points(9, 6, EDGE_SIZE)
+    board_object_points = create_object_points(pattern_size[0], pattern_size[1], EDGE_SIZE)
 
-    #Estimate for test image tvec and rvec
-    _, rvec, tvec = cv.solvePnP(board_object_points, corners, cameraMatrix, distCoeffs)
+    if ret:
+        #Estimate for test image tvec and rvec
+        _, rvec, tvec = cv.solvePnP(board_object_points, corners, cameraMatrix, distCoeffs)
 
-    # Project 3D axes to 2D image
-    imgpts, _ = cv.projectPoints(cube, rvec, tvec, cameraMatrix, distCoeffs)
-    pts = imgpts.reshape(-1,2).astype(int)
-    
-    origin_pt = tuple(pts[0]) #TODO: ???
-    dist = float(np.linalg.norm(tvec))
-    
-    #Color top face
-    top_face = np.array([pts[4], pts[5], pts[6], pts[7]], dtype=np.int32)
-    img = dynamic_color(img, top_face, dmin=0.0, dmax=4.0, rvec=rvec, tvec=tvec)
+        # Project 3D axes to 2D image
+        imgpts, _ = cv.projectPoints(CUBE, rvec, tvec, cameraMatrix, distCoeffs)
+        ax, _ = cv.projectPoints(AXES, rvec, tvec, cameraMatrix, distCoeffs)
+        pts = imgpts.reshape(-1,2).astype(int)
+        axpts = ax.reshape(-1,2).astype(int)
 
-    # Draw cube
-    cv.line(img, tuple(pts[0]), tuple(pts[1]), (0,0,255), 2)
-    cv.line(img, tuple(pts[1]), tuple(pts[2]), (0,0,255), 2)
-    cv.line(img, tuple(pts[2]), tuple(pts[3]), (0,0,255), 2)
-    cv.line(img, tuple(pts[3]), tuple(pts[0]), (0,0,255), 2)
-    cv.line(img, tuple(pts[4]), tuple(pts[5]), (0,255,0), 2)
-    cv.line(img, tuple(pts[5]), tuple(pts[6]), (0,255,0), 2)
-    cv.line(img, tuple(pts[6]), tuple(pts[7]), (0,255,0), 2)
-    cv.line(img, tuple(pts[7]), tuple(pts[4]), (0,255,0), 2)
-    for i in range(4):
-        cv.line(img, tuple(pts[i]), tuple(pts[i+4]), (255,0,0), 2)
+        #Color top face
+        top_face = np.array([pts[4], pts[5], pts[6], pts[7]], dtype=np.int32)
+        img = dynamic_color(img, top_face, dmin=0.0, dmax=4.0, rvec=rvec, tvec=tvec)
 
-    if online!= True:
-        # Display image
-        global save_id
-        cv.imshow("Cube overlay", img)
-        cv.imwrite(f"./cube_runs/cube_overlay{save_id}.png", img)
-        save_id += 1
+        # Draw axes
+        cv.arrowedLine(img, tuple(axpts[0]), tuple(axpts[1]), (255, 0, 0), 2)
+        cv.arrowedLine(img, tuple(axpts[0]), tuple(axpts[2]), (0, 255, 0), 2)
+        cv.arrowedLine(img, tuple(axpts[0]), tuple(axpts[3]), (0, 0, 255), 2)
 
+        # Draw cube
+        cv.line(img, tuple(pts[0]), tuple(pts[1]), (0,0,0), 2)
+        cv.line(img, tuple(pts[1]), tuple(pts[2]), (0,0,0), 2)
+        cv.line(img, tuple(pts[2]), tuple(pts[3]), (0,0,0), 2)
+        cv.line(img, tuple(pts[3]), tuple(pts[0]), (0,0,0), 2)
+        cv.line(img, tuple(pts[4]), tuple(pts[5]), (0,0,0), 2)
+        cv.line(img, tuple(pts[5]), tuple(pts[6]), (0,0,0), 2)
+        cv.line(img, tuple(pts[6]), tuple(pts[7]), (0,0,0), 2)
+        cv.line(img, tuple(pts[7]), tuple(pts[4]), (0,0,0), 2)
+        for i in range(4):
+            cv.line(img, tuple(pts[i]), tuple(pts[i+4]), (0,0,0), 2)
 
+        if online!= True:
+            # Display image
+            global save_id
+            cv.imshow("Cube overlay", img)
+            cv.imwrite(f"./cube_runs/cube_overlay{save_id}.png", img)
+            save_id += 1
 
-        key = cv.waitKey(0)
-        if key == 27:
-            cv.destroyAllWindows()
+            key = cv.waitKey(0)
+            if key == 27:
+                cv.destroyAllWindows()
 
-    else:
-        return img
+        else:
+            return img
+    return img
 
 # directories for the training images
 images = glob.glob('./Images/*.jpg')
@@ -287,7 +337,7 @@ manual_imagePoints = []
 # objp = np.zeros((pattern_size[1]*pattern_size[0],3), np.float32)
 # objp[:,:2] = np.mgrid[0:pattern_size[0],0:pattern_size[1]].T.reshape(-1,2)
 # objp[:,:2] *= EDGE_SIZE 
-objp = create_object_points(9,6,EDGE_SIZE)
+objp = create_object_points(pattern_size[0], pattern_size[1],EDGE_SIZE)
 
 
 for fname in images[:25]:
@@ -344,22 +394,65 @@ for fname in manual_images:
         print("Skipped image: ", fname)
         continue
 
-    src = np.array(state['2dpoints'], dtype=np.float32)
-    W, H = 900, 600
-    dst = np.float32([[0, 0], [W-1, 0], [W-1, H-1], [0, H-1]]) # the corners
-
     # warping for better corner estimation
-    H_warp = cv.getPerspectiveTransform(src, dst)
+    if len(state['2dpoints']) != 4:
+        print(f'This image was skipped : {fname}. Please select at least 4 points in the next one.')
+        continue
+
+    src = np.array(state['2dpoints'], dtype=np.float32)
+
+    # --------------- Enforce order -----------------
+
+    # # Find top-left and bottom-right
+    # sum_coord = src[:,0] + src[:,1]
+    # new_top_left = src[np.argmin(sum_coord)]
+    # new_bottom_right = src[np.argmax(sum_coord)]
+
+    # # Find bottom-left and top-right
+    # diff_coord = src[:,0] - src[:,1]
+    # new_bottom_left = src[np.argmax(diff_coord)]
+    # new_top_right = src[np.argmin(diff_coord)]
+
+    # cx = np.mean(src[:,0])
+    # cy = np.mean(src[:,1])
+    # angles = np.arctan2(src[:, 1] - cy, src[:, 0] - cx)
+    # order = np.argsort(angles)
+    # pts = src[order]
+    
+    # sums = pts[:,0] + pts[:,1]
+    # start = np.argmin(sums)
+    # pts = np.roll(pts, -start, axis=0)
+
+    # if signed_area(pts) > 0:
+    #     pts = np.array([pts[0], pts[3], pts[2], pts[1]], dtype=np.float32)
+
+    src = np.array(state['2dpoints'], dtype = np.float32)
+    ordered = order_points(src, pattern_size = pattern_size)
+    
+    ordered_ref = ordered.reshape(-1, 1, 2).astype(np.float32)
+    cv.cornerSubPix(gray, ordered_ref, (11,11), (-1,-1), criteria)
+    ordered_refined = ordered_ref.reshape(4, 2)
+
+    #dst = np.float32([[0, 0], [W-1, 0], [W-1, H-1], [0, H-1]]) # the corners
+    dst = np.float32([
+        top_left,
+        top_right,
+        bottom_right,
+        bottom_left
+    ])
+    W = (pattern_size[0] - 1) * 100
+    H = (pattern_size[1] - 1) * 100
+    
+    H_warp = cv.getPerspectiveTransform(ordered_refined, dst)
     warped = cv.warpPerspective(img, H_warp, (W, H))
     gray_warped = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
 
     # interpolation
     warped_grid = interpolate_corners(dst, pattern_size[0], pattern_size[1])
     warped_grid = warped_grid.reshape(-1, 1, 2).astype(np.float32)
-    cv.cornerSubPix(gray_warped, warped_grid, (11,11), (-1,-1), criteria)
 
     # inverse warping to go back to original image
-    H_inv = cv.getPerspectiveTransform(dst, src)
+    H_inv = cv.getPerspectiveTransform(dst, ordered_refined)
     img_grid = cv.perspectiveTransform(warped_grid, H_inv)
 
     img_points = img_grid.reshape(-1, 2)
@@ -450,13 +543,13 @@ img = cv.imread(img_path)
 
 
 # Run 1
-draw_cube(img.copy(), cameraMatrix1, distCoeffs1, pattern_size=pattern_size, criteria=criteria, online=False)
+draw_cube(img.copy(), cameraMatrix1, distCoeffs1, pattern_size=pattern_size, online=False)
 
 # Run 2
-draw_cube(img.copy(), cameraMatrix2, distCoeffs2, pattern_size=pattern_size, criteria=criteria, online=False)
+draw_cube(img.copy(), cameraMatrix2, distCoeffs2, pattern_size=pattern_size, online=False)
 
 # Run 3
-draw_cube(img.copy(), cameraMatrix3, distCoeffs3, pattern_size=pattern_size, criteria=criteria, online=False)
+draw_cube(img.copy(), cameraMatrix3, distCoeffs3, pattern_size=pattern_size, online=False)
 
 
 """
@@ -487,7 +580,6 @@ while True:
             rvec=None,      
             tvec=None,
             pattern_size=pattern_size,
-            criteria=criteria,
             online=True
         )
 
